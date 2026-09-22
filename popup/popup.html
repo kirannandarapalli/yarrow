@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Yarrow</title>
+    <link rel="stylesheet" href="popup.css" />
+    <script src="theme.js"></script>
+  </head>
+  <body>
+    <header>
+      <p class="mark">Yarrow</p>
+      <div class="theme" role="group" aria-label="Color theme">
+          <button id="theme-light" type="button" aria-pressed="false" aria-label="Light">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <circle cx="8" cy="8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.5" />
+              <path d="M8 1.4v1.8M8 12.8v1.8M1.4 8h1.8M12.8 8h1.8M3.3 3.3l1.3 1.3M11.4 11.4l1.3 1.3M3.3 12.7l1.3-1.3M11.4 4.6l1.3-1.3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            </svg>
+          </button>
+          <button id="theme-dark" type="button" aria-pressed="true" aria-label="Dark">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <path d="M9.2 2.2a5.2 5.2 0 1 0 4.4 8.7A5.6 5.6 0 0 1 9.2 2.2z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+            </svg>
+          </button>
+      </div>
+    </header>
+    <section id="threat" class="threat" hidden>
+      <strong>Malicious site</strong>
+      <p id="threat-reason"></p>
+    </section>
+    <section class="power-card">
+      <div>
+        <h1 id="headline">Checking this site…</h1>
+        <p id="site" class="site"></p>
+        <p id="count" class="count">0 blocked</p>
+      </div>
+      <button id="pause" class="switch power" type="button" role="switch" aria-checked="true" aria-label="Blocking this site"></button>
+    </section>
+    <button id="pick" type="button" class="pause">Hide an element</button>
+    <div id="hides"></div>
+    <details class="more">
+      <summary>More options</summary>
+      <div class="more-body">
+        <div class="row">
+          <p class="name">Block ads</p>
+          <button id="ads" class="switch" type="button" role="switch" aria-checked="true" aria-label="Block ads"></button>
+        </div>
+        <div class="row">
+          <p class="name">Stop tracking</p>
+          <button id="tracking" class="switch" type="button" role="switch" aria-checked="true" aria-label="Stop tracking"></button>
+        </div>
+        <div class="row">
+          <p class="name">Security alerts</p>
+          <button id="security" class="switch" type="button" role="switch" aria-checked="true" aria-label="Security alerts"></button>
+        </div>
+        <div class="row">
+          <p class="name">Cookie popups</p>
+          <button id="annoyances" class="switch" type="button" role="switch" aria-checked="true" aria-label="Cookie popups"></button>
+        </div>
+        <div class="row">
+          <p class="name">Video ads</p>
+          <button id="video-ads" class="switch" type="button" role="switch" aria-checked="true" aria-label="Video ads"></button>
+        </div>
+        <div class="row">
+          <p class="name">Banners</p>
+          <button id="banners" class="switch" type="button" role="switch" aria-checked="true" aria-label="Banners"></button>
+        </div>
+        <p class="name lists-label">Lists</p>
+        <div class="entry">
+          <input id="domain" type="text" placeholder="ads.example.com" autocomplete="off" spellcheck="false" aria-label="Domain" />
+          <button id="add-block" type="button" class="mini danger">Block</button>
+          <button id="add-allow" type="button" class="mini">Allow</button>
+        </div>
+        <p id="list-error" class="error" hidden></p>
+        <div id="chips"></div>
+      </div>
+    </details>
+    <script src="popup.js"></script>
+  </body>
+</html>
