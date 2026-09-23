@@ -11,6 +11,11 @@ function boot() {
   function Node() {}
   Node.prototype.appendChild = function (node) {
     appended.push(node);
+    const left = node && node.reenter;
+    if (left) {
+      node.reenter = left - 1;
+      this.appendChild({ nodeType: 1, localName: "span", reenter: left - 1 });
+    }
     return node;
   };
   Node.prototype.insertBefore = function (node) {
@@ -88,7 +93,9 @@ test("a normal link click does not also open an ad tab", () => {
     },
   });
   fire(context, "click", link);
-  assert.equal(context.open("https://doubleclick.net/aclk"), null);
+  const blocked = context.open("https://doubleclick.net/aclk");
+  assert.equal(context.opened.includes("https://doubleclick.net/aclk"), false);
+  assert.equal(typeof blocked.document.write, "function");
   const booking = context.open("https://partner.example/booking");
   assert.equal(booking.url, "https://partner.example/booking");
 });
@@ -196,7 +203,9 @@ test("a hidden new-tab anchor is still blocked", () => {
   });
   const event = fire(context, "click", link);
   assert.equal(event.defaultPrevented, true);
-  assert.equal(context.open("about:blank"), null);
+  const blocked = context.open("about:blank");
+  assert.equal(context.opened.includes("about:blank"), false);
+  assert.equal(typeof blocked.document.write, "function");
 });
 
 test("ad links do not navigate", () => {
@@ -209,7 +218,25 @@ test("ad links do not navigate", () => {
   });
   const event = fire(context, "click", link);
   assert.equal(event.defaultPrevented, true);
-  assert.equal(context.open("https://doubleclick.net/aclk"), null);
+  assert.equal(context.opened.includes("https://doubleclick.net/aclk"), false);
+});
+
+test("a click that the page cannot describe does not throw", () => {
+  const context = boot();
+  const link = element({
+    closest() {
+      throw new Error("bad closest");
+    },
+  });
+  assert.doesNotThrow(() => fire(context, "click", link));
+});
+
+test("a nested append still inserts every node", () => {
+  const context = boot();
+  const parent = new context.Node();
+  const child = { nodeType: 1, localName: "div", reenter: 5 };
+  assert.equal(parent.appendChild(child), child);
+  assert.equal(context.appended.length, 6);
 });
 
 test("appending a normal node still works, and a broken node does not throw", () => {

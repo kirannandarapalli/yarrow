@@ -101,12 +101,13 @@
       return;
     }
     if (typeof native !== "function") return;
+    let bound;
     try {
       win.__blockeeHooked = true;
+      bound = native.bind(win);
     } catch (err) {
       return;
     }
-    const bound = native.bind(win);
     function hookedOpen(...args) {
       try {
         const click = currentClick();
@@ -123,7 +124,7 @@
           })
         ) {
           noteBlock(args.length ? args[0] : "");
-          return null;
+          return inertPopup();
         }
       } catch (err) {
         // If the check fails, keep the page working.
@@ -148,7 +149,42 @@
     }
   }
 
+  function inertPopup() {
+    const doc = {
+      open() {},
+      close() {},
+      write() {},
+      writeln() {},
+      createElement() {
+        return { style: {}, setAttribute() {}, appendChild(node) { return node; } };
+      },
+    };
+    const popup = {
+      closed: false,
+      close() {
+        popup.closed = true;
+      },
+      focus() {},
+      blur() {},
+      print() {},
+      stop() {},
+      postMessage() {},
+      document: doc,
+      location: { href: "about:blank", assign() {}, replace() {} },
+    };
+    doc.defaultView = popup;
+    return popup;
+  }
+
   function onActivate(event) {
+    try {
+      onActivateUnsafe(event);
+    } catch (err) {
+      // A click must still reach the page.
+    }
+  }
+
+  function onActivateUnsafe(event) {
     readEnabled();
     clickState = Object.assign({ at: Date.now() }, classify(event));
     if (!enabled) return;
@@ -180,17 +216,25 @@
   hookWindow(window, false);
 
   if (typeof HTMLIFrameElement === "function") {
-    const contentWindow = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, "contentWindow");
-    if (contentWindow && contentWindow.get) {
-      Object.defineProperty(HTMLIFrameElement.prototype, "contentWindow", {
-        configurable: true,
-        enumerable: contentWindow.enumerable,
-        get: function () {
-          const frameWindow = contentWindow.get.call(this);
-          hookWindow(frameWindow, true);
-          return frameWindow;
-        },
-      });
+    try {
+      const contentWindow = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, "contentWindow");
+      if (contentWindow && contentWindow.get) {
+        Object.defineProperty(HTMLIFrameElement.prototype, "contentWindow", {
+          configurable: true,
+          enumerable: contentWindow.enumerable,
+          get: function () {
+            const frameWindow = contentWindow.get.call(this);
+            try {
+              hookWindow(frameWindow, true);
+            } catch (err) {
+              // Reading the frame must still succeed.
+            }
+            return frameWindow;
+          },
+        });
+      }
+    } catch (err) {
+      // Leave the browser's contentWindow in place.
     }
   }
 
@@ -208,23 +252,31 @@
   if (typeof HTMLFormElement === "function") {
     const nativeSubmit = HTMLFormElement.prototype.submit;
     HTMLFormElement.prototype.submit = function () {
-      if (blockedForm(this)) {
-        noteBlock(this.getAttribute("action") || this.action);
-        return undefined;
+      try {
+        if (blockedForm(this)) {
+          noteBlock(this.getAttribute("action") || this.action);
+          return undefined;
+        }
+      } catch (err) {
+        // If the check fails, submit as the page asked.
       }
       return nativeSubmit.call(this);
     };
     window.addEventListener(
       "submit",
       function (event) {
-        const form = event.target;
-        if (!form || form.tagName !== "FORM") return;
-        const adAction = globalThis.BlockeeMatch.isAdUrl(form.action, location.href);
-        if (!adAction && !clickIsHidden(form)) return;
-        if (!adAction && !blockedForm(form)) return;
-        event.preventDefault();
-        event.stopPropagation();
-        noteBlock(form.getAttribute("action") || form.action);
+        try {
+          const form = event.target;
+          if (!form || form.tagName !== "FORM") return;
+          const adAction = globalThis.BlockeeMatch.isAdUrl(form.action, location.href);
+          if (!adAction && !clickIsHidden(form)) return;
+          if (!adAction && !blockedForm(form)) return;
+          event.preventDefault();
+          event.stopPropagation();
+          noteBlock(form.getAttribute("action") || form.action);
+        } catch (err) {
+          // Leave the submit alone when the check itself fails.
+        }
       },
       true
     );
@@ -248,13 +300,17 @@
     if (typeof native !== "function") return;
     let depth = 0;
     Node.prototype[name] = function (node) {
+      if (depth > 0) return native.apply(this, arguments);
       depth += 1;
       try {
-        if (depth > 4) return node;
-        if (depth === 1 && popScriptNode(node)) {
-          noteBlock(node.getAttribute && node.getAttribute("src"));
-          return node;
+        let blocked = false;
+        try {
+          blocked = popScriptNode(node);
+          if (blocked) noteBlock(node.getAttribute && node.getAttribute("src"));
+        } catch (err) {
+          blocked = false;
         }
+        if (blocked) return node;
         return native.apply(this, arguments);
       } finally {
         depth -= 1;
