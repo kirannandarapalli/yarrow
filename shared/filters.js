@@ -94,7 +94,7 @@
   }
 
   function buildFeedRules(cache, settings, resourceTypes) {
-    const types = (resourceTypes || []).concat(["main_frame"]);
+    const types = (resourceTypes || []).slice();
     const blocks = [];
     const allows = [];
     const adsOn = !settings || settings.enabled !== false;

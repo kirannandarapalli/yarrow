@@ -89,6 +89,73 @@
     return "on";
   }
 
+  function badgeText(mode, count) {
+    if (mode === "bad") return "!";
+    if (mode !== "on") return "OFF";
+    const total = Math.max(0, Math.floor(Number(count) || 0));
+    return total > 9999 ? "9999" : String(total);
+  }
+
+  function logEntry(raw) {
+    const domain = siteHost(raw);
+    if (!domain) return null;
+    const url = String(raw).split("#")[0].slice(0, 180);
+    return { url: url, domain: domain };
+  }
+
+  function rememberLog(entries, raw, limit) {
+    const entry = logEntry(raw);
+    const list = Array.isArray(entries) ? entries.slice() : [];
+    if (!entry) return list;
+    if (list.some((item) => item && item.domain === entry.domain)) return list;
+    list.push(entry);
+    const cap = limit || 30;
+    return list.length > cap ? list.slice(list.length - cap) : list;
+  }
+
+  function domainList(list) {
+    return uniqueSorted((list || []).map((item) => normalizeDomain(item)).filter(Boolean)).slice(0, LIST_LIMIT);
+  }
+
+  function flag(value) {
+    return value !== false;
+  }
+
+  function backupSettings(state) {
+    const source = state || {};
+    const allowList = domainList(source.allowList);
+    const hidden = [];
+    (source.hiddenElements || []).forEach((item) => {
+      if (!item || hidden.length >= 200) return;
+      const host = normalizeDomain(item.host);
+      const selector = typeof item.selector === "string" ? item.selector.trim() : "";
+      if (!host || !selector || selector.length > 300) return;
+      if (hidden.some((saved) => saved.host === host && saved.selector === selector)) return;
+      hidden.push({ host: host, selector: selector });
+    });
+    return {
+      yarrow: 1,
+      enabled: flag(source.enabled),
+      trackingEnabled: flag(source.trackingEnabled),
+      securityEnabled: flag(source.securityEnabled),
+      annoyancesEnabled: flag(source.annoyancesEnabled),
+      videoAdsEnabled: flag(source.videoAdsEnabled),
+      bannersEnabled: flag(source.bannersEnabled),
+      sponsorsEnabled: flag(source.sponsorsEnabled),
+      pausedSites: domainList(source.pausedSites),
+      allowList: allowList,
+      blockList: domainList(source.blockList).filter((domain) => !allowList.includes(domain)),
+      hiddenElements: hidden,
+    };
+  }
+
+  function importSettings(raw) {
+    if (!raw || typeof raw !== "object" || raw.yarrow !== 1) {
+      return { ok: false, error: "That file is not a Yarrow backup." };
+    }
+    return { ok: true, settings: backupSettings(raw) };
+  }
+
 function buildSiteRules(state, resourceTypes) {
     const types = resourceTypes.concat(["main_frame"]);
     const rules = [];
@@ -124,9 +191,14 @@ function buildSiteRules(state, resourceTypes) {
 
   const api = {
     applyListChange,
+    backupSettings,
+    badgeText,
     buildSiteRules,
+    importSettings,
     isSitePaused,
+    logEntry,
     normalizeDomain,
+    rememberLog,
     siteHost,
     togglePaused,
     toolbarMode,

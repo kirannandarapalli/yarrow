@@ -1,9 +1,10 @@
 {
   "name": "yarrow",
   "private": true,
-  "version": "1.4.0",
+  "version": "1.5.0",
   "scripts": {
     "test": "node --test",
-    "build:rules": "node scripts/build-rules.js"
+    "build:rules": "node scripts/build-rules.js",
+    "pack": "node scripts/pack.js"
   }
 }

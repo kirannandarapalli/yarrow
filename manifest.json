@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Yarrow",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Blocks ads, trackers, cookie popups, and YouTube ads, and warns you when a site looks malicious.",
   "minimum_chrome_version": "111",
   "permissions": [
@@ -13,7 +13,8 @@
     "scripting",
     "webRequest",
     "notifications",
-    "alarms"
+    "alarms",
+    "contextMenus"
   ],
   "host_permissions": ["<all_urls>"],
   "background": {
@@ -85,7 +86,9 @@
         "content/hides.js",
         "content/picker.js",
         "content/youtube.js",
-        "content/players.js"
+        "content/players.js",
+        "shared/sponsor.js",
+        "content/sponsor.js"
       ],
       "run_at": "document_start",
       "all_frames": true,

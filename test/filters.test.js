@@ -36,6 +36,7 @@ test("feed blocks sit below a personal allow and a paused site", () => {
   assert.equal(block.priority, 10);
   assert.equal(allow.priority, 100);
   assert.deepEqual(block.condition.requestDomains, ["ads.example"]);
+  assert.equal(block.condition.resourceTypes.includes("main_frame"), false);
   assert.equal(rules.some((rule) => (rule.condition.requestDomains || []).includes("keep.example") && rule.action.type === "block"), false);
 });
 

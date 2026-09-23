@@ -103,6 +103,56 @@ test("a button can still open a real popup", () => {
   assert.deepEqual(context.opened, ["https://accounts.google.com/o/oauth2/v2/auth"]);
 });
 
+test("a visible new-tab link is left alone", () => {
+  const context = boot();
+  context.getComputedStyle = (node) =>
+    node.displayContents
+      ? { display: "contents", visibility: "visible", opacity: "1" }
+      : { display: "block", visibility: "visible", opacity: "1" };
+  const child = element({
+    getBoundingClientRect() {
+      return { width: 120, height: 24 };
+    },
+  });
+  const link = element({
+    href: "https://partner.example/story",
+    target: "_blank",
+    displayContents: true,
+    children: [child],
+    getBoundingClientRect() {
+      return { width: 0, height: 0 };
+    },
+    closest(selector) {
+      return selector === "a[href]" ? link : null;
+    },
+  });
+  const event = fire(context, "click", link);
+  assert.equal(event.defaultPrevented, false);
+  const popup = context.open("https://partner.example/story?ref=home");
+  assert.equal(popup.url, "https://partner.example/story?ref=home");
+  const blank = context.open("about:blank");
+  assert.equal(blank.url, "about:blank");
+});
+
+test("a hidden new-tab anchor is still blocked", () => {
+  const context = boot();
+  context.getComputedStyle = () => ({ display: "block", visibility: "visible", opacity: "1" });
+  const link = element({
+    href: "https://sponsor.example/offer",
+    target: "_blank",
+    children: [],
+    getBoundingClientRect() {
+      return { width: 1, height: 1 };
+    },
+    closest(selector) {
+      return selector === "a[href]" ? link : null;
+    },
+  });
+  const event = fire(context, "click", link);
+  assert.equal(event.defaultPrevented, true);
+  assert.equal(context.open("about:blank"), null);
+});
+
 test("ad links do not navigate", () => {
   const context = boot();
   const link = element({

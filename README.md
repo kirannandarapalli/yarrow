@@ -21,15 +21,16 @@ After you pull new code, open `chrome://extensions` and click **Reload** on Yarr
 Click the toolbar icon.
 
 - The big switch turns blocking **on or off for the current site**. Off means this site is paused.
-- The number is how many requests Yarrow blocked on this page.
-- **Hide an element** lets you click something on the page and hide it on that site until you remove it.
-- **More options** holds the rest of the controls.
+- The number is how many requests Yarrow blocked on this page. The same number is on the toolbar icon while blocking is on.
+- **Blocked on this page** lists the domains behind that number. **Allow** adds one to your allow list so the site can load it.
+- **Hide an element** lets you click something on the page and hide it on that site until you remove it. The same action is on the right-click menu as **Hide this element**.
+- **More options** holds the rest of the controls, including **Export** and **Import** for a backup of your switches, lists, pauses, and hidden elements.
 
 The toolbar icon matches the site:
 
 | Icon | Meaning |
 | --- | --- |
-| Green, ON | Blocking is on for this site |
+| Green, with a number | Blocking is on for this site. The number is how many requests were blocked |
 | Gray, OFF | This site is paused, or Block ads is off |
 | Red, ! | The site looks malicious |
 
@@ -44,6 +45,7 @@ Sun and moon in the popup switch light and dark mode. The choice is saved on thi
 | Security alerts | Turns the icon red and sends a notification on a suspicious site |
 | Cookie popups | Hides cookie banners and newsletter prompts |
 | Video ads | Tries to skip in-player ads, including on YouTube |
+| Skip sponsors | Skips crowdsourced sponsor, intro, and outro segments on YouTube |
 | Banners | Hides display ads, sponsored boxes, and sticky ad bars |
 | Lists | Block a domain the built-in lists miss, or allow one that should load |
 
@@ -59,8 +61,9 @@ About every 12 hours it downloads:
 - [EasyPrivacy](https://easylist.to/easylist/easyprivacy.txt) for trackers
 - A cookie-banner list, from Fanboy’s Cookie List, with the uBlock Origin cookie list as a fallback
 - [OpenPhish](https://openphish.com/) URLs and [URLhaus](https://urlhaus.abuse.ch/) hosts for the malicious-site warning
+- [SponsorBlock](https://sponsor.ajay.app/) segment times when a YouTube video is open. Yarrow sends only the video id.
 
-Those lists are maintained by other people. Yarrow applies a capped subset of them.
+Those lists are maintained by other people. Yarrow applies a capped subset of the filter lists. Sponsor segments longer than 10 minutes, or most of the video, are ignored.
 
 ## Develop
 
@@ -73,7 +76,15 @@ npm run build:rules
 
 `npm test` runs the unit tests. `npm run build:rules` rewrites `rules/ads.json` and `rules/trackers.json` from the built-in domain lists. Do not edit those JSON files by hand.
 
-There is no separate build step for the extension. Load this folder unpacked.
+There is no separate build step for day-to-day use. Load this folder unpacked.
+
+To make a zip you can share or upload to the Chrome Web Store:
+
+```bash
+npm run pack
+```
+
+That writes `dist/yarrow-1.5.0.zip`. Unzip it, then load the unzipped folder from `chrome://extensions`. Publishing in the Chrome Web Store uses that same zip and a Chrome Web Store developer account.
 
 ## Limits
 

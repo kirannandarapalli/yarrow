@@ -1,11 +1,13 @@
 (function () {
-  if (globalThis.__blockeePicker || window.top !== window) return;
+  if (globalThis.__blockeePicker) return;
   globalThis.__blockeePicker = true;
 
   const STYLE_ID = "blockee-picked";
+  const topFrame = window.top === window;
   let picking = false;
   let current = null;
   let banner = null;
+  let rightClicked = null;
 
   function host() {
     return location.hostname.toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
@@ -74,6 +76,15 @@
     return globalThis.BlockeeGuards.usableSelector(parts.join(" > "));
   }
 
+  function hideClicked() {
+    const selector = selectorFor(rightClicked);
+    if (!selector) return;
+    chrome.runtime.sendMessage({ type: "blockee-hide", selector: selector }, () => {
+      void chrome.runtime.lastError;
+      loadSaved();
+    });
+  }
+
   function stop(event) {
     event.preventDefault();
     event.stopPropagation();
@@ -119,6 +130,7 @@
   }
 
   function start() {
+    if (!topFrame) return;
     cancel();
     picking = true;
     banner = document.createElement("div");
@@ -130,8 +142,19 @@
     document.addEventListener("keydown", onKey, true);
   }
 
+  document.addEventListener(
+    "contextmenu",
+    (event) => {
+      const target = event.target;
+      if (target && target.nodeType === 1) rightClicked = target;
+    },
+    true
+  );
+
   chrome.runtime.onMessage.addListener((message) => {
-    if (message && message.type === "blockee-pick") start();
+    if (!message) return;
+    if (message.type === "blockee-hide-target") hideClicked();
+    if (message.type === "blockee-pick") start();
   });
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === "local" && (changes.hiddenElements || changes.pausedSites || changes.enabled)) loadSaved();

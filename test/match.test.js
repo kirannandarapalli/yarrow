@@ -95,8 +95,19 @@ test("popup policy blocks ads and click hijacks, and allows real popups", () => 
       openUrl: "about:blank",
       pageUrl: page,
       clickedHref: "https://news.example/story/next",
+      clickedHidden: true,
     }),
     true
+  );
+
+  assert.equal(
+    shouldBlockPopup({
+      enabled: true,
+      openUrl: "about:blank",
+      pageUrl: page,
+      clickedHref: "https://news.example/story/next",
+    }),
+    false
   );
 
   assert.equal(
@@ -107,6 +118,16 @@ test("popup policy blocks ads and click hijacks, and allows real popups", () => 
       clickedHref: "https://news.example/story/next",
     }),
     true
+  );
+
+  assert.equal(
+    shouldBlockPopup({
+      enabled: true,
+      openUrl: "https://partner.example/story?utm=1",
+      pageUrl: page,
+      clickedHref: "https://www.partner.example/story",
+    }),
+    false
   );
 
   assert.equal(

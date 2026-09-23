@@ -9,10 +9,10 @@
     enabled = document.documentElement?.dataset.blockee !== "off";
   }
 
-  function noteBlock() {
+  function noteBlock(url) {
     try {
       if (!document || typeof document.dispatchEvent !== "function" || typeof CustomEvent !== "function") return;
-      document.dispatchEvent(new CustomEvent("blockee-blocked"));
+      document.dispatchEvent(new CustomEvent("blockee-blocked", { detail: url || "" }));
     } catch (err) {
       // Counting is optional. Blocking still applies.
     }
@@ -32,7 +32,7 @@
   function classify(event) {
     const anchor = anchorFrom(event);
     if (anchor && globalThis.BlockeeMatch.isRealNavigation(anchor.href, location.href)) {
-      return { kind: "navigate", href: anchor.href };
+      return { kind: "navigate", href: anchor.href, hidden: isHidden(anchor) };
     }
     const element = elementFrom(event);
     if (element && element.closest && element.closest("button, input, select, textarea, [role='button']")) {
@@ -42,15 +42,23 @@
   }
 
   function currentClick() {
-    if (!clickState || Date.now() - clickState.at > 3000) return { kind: "none", href: null };
+    if (!clickState || Date.now() - clickState.at > 3000) return { kind: "none", href: null, hidden: false };
     return clickState;
   }
 
   function isHidden(element) {
-    if (!element || typeof element.getBoundingClientRect !== "function") return false;
+    if (!element || element.nodeType !== 1 || typeof element.getBoundingClientRect !== "function") return false;
     try {
       const style = getComputedStyle(element);
       if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) return true;
+      if (style.display === "contents") {
+        const kids = element.children;
+        if (!kids || !kids.length) return false;
+        for (let i = 0; i < kids.length; i += 1) {
+          if (!isHidden(kids[i])) return false;
+        }
+        return true;
+      }
       const rect = element.getBoundingClientRect();
       return rect.width < 2 || rect.height < 2;
     } catch (err) {
@@ -91,10 +99,11 @@
             pageUrl: location.href,
             clickedHref: click.href,
             clickKind: click.kind,
+            clickedHidden: click.hidden,
             viaFrame: viaFrame,
           })
         ) {
-          noteBlock();
+          noteBlock(args.length ? args[0] : "");
           return null;
         }
       } catch (err) {
@@ -137,7 +146,7 @@
     if (!block) return;
     event.preventDefault();
     event.stopPropagation();
-    if (event.type === "click" || event.type === "auxclick" || event.type === "keydown") noteBlock();
+    if (event.type === "click" || event.type === "auxclick" || event.type === "keydown") noteBlock(anchor.href);
   }
 
   function onKeydown(event) {
@@ -176,7 +185,7 @@
     const nativeSubmit = HTMLFormElement.prototype.submit;
     HTMLFormElement.prototype.submit = function () {
       if (blockedForm(this)) {
-        noteBlock();
+        noteBlock(this.getAttribute("action") || this.action);
         return undefined;
       }
       return nativeSubmit.call(this);
@@ -191,7 +200,7 @@
         if (!adAction && !blockedForm(form)) return;
         event.preventDefault();
         event.stopPropagation();
-        noteBlock();
+        noteBlock(form.getAttribute("action") || form.action);
       },
       true
     );
@@ -219,7 +228,7 @@
       try {
         if (depth > 4) return node;
         if (depth === 1 && popScriptNode(node)) {
-          noteBlock();
+          noteBlock(node.getAttribute && node.getAttribute("src"));
           return node;
         }
         return native.apply(this, arguments);

@@ -19,6 +19,7 @@ const switches = {
   annoyancesEnabled: document.getElementById("annoyances"),
   videoAdsEnabled: document.getElementById("video-ads"),
   bannersEnabled: document.getElementById("banners"),
+  sponsorsEnabled: document.getElementById("sponsors"),
 };
 
 let state = {
@@ -28,10 +29,12 @@ let state = {
   annoyancesEnabled: true,
   videoAdsEnabled: true,
   bannersEnabled: true,
+  sponsorsEnabled: true,
   pausedHere: false,
   hiddenHere: [],
   allowList: [],
   blockList: [],
+  blockedLog: [],
   threat: null,
 };
 let pageUrl = "";
@@ -93,12 +96,44 @@ function render() {
   });
   renderChips();
   renderHides();
+  renderLog();
 }
 
 function renderChips() {
   chips.replaceChildren();
   state.blockList.forEach((domain) => chips.append(chip(domain, "block")));
   state.allowList.forEach((domain) => chips.append(chip(domain, "allow")));
+}
+
+function renderLog() {
+  const section = document.getElementById("log");
+  const list = document.getElementById("log-list");
+  const entries = state.blockedLog || [];
+  section.hidden = entries.length === 0;
+  list.replaceChildren();
+  entries.forEach((entry) => {
+    const row = document.createElement("li");
+    row.className = "log-row";
+    const name = document.createElement("span");
+    name.className = "log-domain";
+    name.textContent = entry.domain;
+    name.title = entry.url || entry.domain;
+    row.append(name);
+    if ((state.allowList || []).includes(entry.domain)) {
+      const done = document.createElement("span");
+      done.className = "log-allowed";
+      done.textContent = "Allowed";
+      row.append(done);
+    } else {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "mini";
+      button.textContent = "Allow";
+      button.addEventListener("click", () => changeList("allow", entry.domain));
+      row.append(button);
+    }
+    list.append(row);
+  });
 }
 
 function renderHides() {
@@ -146,10 +181,12 @@ function applyResponse(response) {
     annoyancesEnabled: response.annoyancesEnabled !== false,
     videoAdsEnabled: response.videoAdsEnabled !== false,
     bannersEnabled: response.bannersEnabled !== false,
+    sponsorsEnabled: response.sponsorsEnabled !== false,
     pausedHere: !!response.pausedHere,
     hiddenHere: response.hiddenHere || [],
     allowList: response.allowList || [],
     blockList: response.blockList || [],
+    blockedLog: response.blockedLog || [],
     threat: response.threat || null,
   };
   count.textContent = formatCount(response.blockedCount);
@@ -269,5 +306,60 @@ setInterval(() => {
   chrome.runtime.sendMessage({ type: "blockee-get", url: pageUrl, tabId: tabId }, (response) => {
     if (!response) return;
     count.textContent = formatCount(response.blockedCount);
+    state.blockedLog = response.blockedLog || [];
+    state.allowList = response.allowList || state.allowList;
+    renderLog();
   });
 }, 1000);
+
+function downloadBackup(backup) {
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "yarrow-backup.json";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById("export-settings").addEventListener("click", () => {
+  showListError("");
+  chrome.runtime.sendMessage({ type: "blockee-export" }, (response) => {
+    if (chrome.runtime.lastError || !response || !response.ok) {
+      showListError("Could not export Yarrow settings.");
+      return;
+    }
+    downloadBackup(response.backup);
+  });
+});
+
+document.getElementById("import-settings").addEventListener("click", () => {
+  document.getElementById("import-file").click();
+});
+
+document.getElementById("import-file").addEventListener("change", (event) => {
+  const file = event.target.files && event.target.files[0];
+  event.target.value = "";
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let backup;
+    try {
+      backup = JSON.parse(String(reader.result || ""));
+    } catch (err) {
+      showListError("That file is not a Yarrow backup.");
+      return;
+    }
+    chrome.runtime.sendMessage({ type: "blockee-import", backup: backup }, (response) => {
+      if (chrome.runtime.lastError || !response || !response.ok) {
+        showListError((response && response.error) || "Could not import that backup.");
+        return;
+      }
+      showListError("");
+      load();
+    });
+  };
+  reader.readAsText(file);
+});

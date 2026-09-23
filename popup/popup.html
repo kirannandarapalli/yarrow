@@ -36,6 +36,10 @@
       <button id="pause" class="switch power" type="button" role="switch" aria-checked="true" aria-label="Blocking this site"></button>
     </section>
     <button id="pick" type="button" class="pause">Hide an element</button>
+    <section id="log" class="log" hidden>
+      <p class="name">Blocked on this page</p>
+      <ul id="log-list"></ul>
+    </section>
     <div id="hides"></div>
     <details class="more">
       <summary>More options</summary>
@@ -61,6 +65,10 @@
           <button id="video-ads" class="switch" type="button" role="switch" aria-checked="true" aria-label="Video ads"></button>
         </div>
         <div class="row">
+          <p class="name">Skip sponsors</p>
+          <button id="sponsors" class="switch" type="button" role="switch" aria-checked="true" aria-label="Skip sponsors"></button>
+        </div>
+        <div class="row">
           <p class="name">Banners</p>
           <button id="banners" class="switch" type="button" role="switch" aria-checked="true" aria-label="Banners"></button>
         </div>
@@ -72,6 +80,12 @@
         </div>
         <p id="list-error" class="error" hidden></p>
         <div id="chips"></div>
+        <p class="name lists-label">Backup</p>
+        <div class="entry">
+          <button id="export-settings" type="button" class="mini">Export</button>
+          <button id="import-settings" type="button" class="mini">Import</button>
+          <input id="import-file" type="file" accept="application/json,.json" hidden />
+        </div>
       </div>
     </details>
     <script src="popup.js"></script>

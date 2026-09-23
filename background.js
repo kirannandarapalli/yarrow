@@ -22,6 +22,7 @@ const DEFAULTS = {
   annoyancesEnabled: true,
   videoAdsEnabled: true,
   bannersEnabled: true,
+  sponsorsEnabled: true,
   hiddenElements: [],
 };
 
@@ -35,6 +36,7 @@ let settings = {
   annoyancesEnabled: true,
   videoAdsEnabled: true,
   bannersEnabled: true,
+  sponsorsEnabled: true,
   hiddenElements: [],
 };
 let filterCache = {
@@ -46,15 +48,23 @@ let filterCache = {
 let ready;
 let threatIndex = { urls: new Set(), hosts: new Set() };
 const blockedCounts = new Map();
+const blockedLogs = new Map();
 const navTimes = new Map();
 const seenRequests = new Set();
+const badgeTimers = new Map();
+const LOG_LIMIT = 30;
 const countsReady = chrome.storage.session
   .get(null)
   .then((all) => {
     Object.keys(all || {}).forEach((key) => {
-      if (!key.startsWith("blockee-count-")) return;
-      const tabId = Number(key.slice("blockee-count-".length));
-      if (Number.isInteger(tabId)) blockedCounts.set(tabId, all[key] || 0);
+      if (key.startsWith("blockee-count-")) {
+        const tabId = Number(key.slice("blockee-count-".length));
+        if (Number.isInteger(tabId)) blockedCounts.set(tabId, all[key] || 0);
+      }
+      if (key.startsWith("blockee-log-")) {
+        const tabId = Number(key.slice("blockee-log-".length));
+        if (Number.isInteger(tabId) && Array.isArray(all[key])) blockedLogs.set(tabId, all[key]);
+      }
     });
   })
   .catch(() => {});
@@ -62,6 +72,10 @@ let persistTimer = null;
 
 function countKey(tabId) {
   return "blockee-count-" + tabId;
+}
+
+function logKey(tabId) {
+  return "blockee-log-" + tabId;
 }
 
 function isBlockedMatch(rule) {
@@ -87,6 +101,9 @@ function persistCounts() {
   blockedCounts.forEach((value, tabId) => {
     payload[countKey(tabId)] = value;
   });
+  blockedLogs.forEach((value, tabId) => {
+    payload[logKey(tabId)] = value;
+  });
   chrome.storage.session.set(payload).catch(() => {});
 }
 
@@ -98,12 +115,35 @@ function schedulePersist() {
   }, 100);
 }
 
-function noteBlock(tabId, requestId) {
+function pushLog(tabId, url) {
+  if (!url) return;
+  blockedLogs.set(tabId, globalThis.BlockeeSites.rememberLog(blockedLogs.get(tabId), url, LOG_LIMIT));
+}
+
+function logsFor(tabId) {
+  return (blockedLogs.get(tabId) || []).slice();
+}
+
+function scheduleBadge(tabId) {
+  if (badgeTimers.has(tabId)) return;
+  const timer = setTimeout(() => {
+    badgeTimers.delete(tabId);
+    chrome.tabs
+      .get(tabId)
+      .then((tab) => paintTab(tab.id, tab.url || "", false))
+      .catch(() => {});
+  }, 200);
+  badgeTimers.set(tabId, timer);
+}
+
+function noteBlock(tabId, requestId, url) {
   if (tabId == null || tabId < 0) return;
   countsReady.then(() => {
     if (requestId && !rememberRequest(requestId)) return;
     blockedCounts.set(tabId, (blockedCounts.get(tabId) || 0) + 1);
+    pushLog(tabId, url);
     schedulePersist();
+    scheduleBadge(tabId);
   });
 }
 
@@ -146,6 +186,7 @@ function whenReady() {
           annoyancesEnabled: data.annoyancesEnabled !== false,
           videoAdsEnabled: data.videoAdsEnabled !== false,
           bannersEnabled: data.bannersEnabled !== false,
+          sponsorsEnabled: data.sponsorsEnabled !== false,
           hiddenElements: Array.isArray(data.hiddenElements) ? data.hiddenElements : [],
         };
         return syncSettings();
@@ -221,6 +262,10 @@ function bannersOn(url) {
   return settings.bannersEnabled && !globalThis.BlockeeSites.isSitePaused(url, settings.pausedSites);
 }
 
+function sponsorsOn(url) {
+  return settings.sponsorsEnabled && !globalThis.BlockeeSites.isSitePaused(url, settings.pausedSites);
+}
+
 function hiddenFor(url) {
   const host = globalThis.BlockeeSites.siteHost(url);
   return (settings.hiddenElements || []).filter((item) => item && (item.host === host || (host && host.endsWith("." + item.host))));
@@ -243,6 +288,7 @@ async function broadcastAds() {
           annoyances: annoyancesOn(tab.url || ""),
           video: videoOn(tab.url || ""),
           banners: bannersOn(tab.url || ""),
+          sponsors: sponsorsOn(tab.url || ""),
         })
         .catch(() => {});
     })
@@ -252,7 +298,7 @@ async function broadcastAds() {
 async function setSetting(key, value) {
   settings[key] = !!value;
   await syncSettings();
-  if (key === "enabled" || key === "annoyancesEnabled" || key === "videoAdsEnabled" || key === "bannersEnabled") {
+  if (key === "enabled" || key === "annoyancesEnabled" || key === "videoAdsEnabled" || key === "bannersEnabled" || key === "sponsorsEnabled") {
     await broadcastAds();
   }
 }
@@ -277,13 +323,14 @@ const TOOLBAR_ICONS = {
   bad: { 16: "icons/bad16.png", 32: "icons/bad32.png", 48: "icons/bad48.png", 128: "icons/bad128.png" },
 };
 
-async function applyToolbar(tabId, mode) {
+async function applyToolbar(tabId, mode, count) {
   const icons = TOOLBAR_ICONS[mode] || TOOLBAR_ICONS.off;
   const target = tabId == null ? {} : { tabId: tabId };
   await chrome.action.setIcon(Object.assign({ path: icons }, target));
   if (mode === "bad") return;
   const on = mode === "on";
-  await chrome.action.setBadgeText(Object.assign({ text: on ? "ON" : "OFF" }, target));
+  const text = globalThis.BlockeeSites.badgeText(mode, count);
+  await chrome.action.setBadgeText(Object.assign({ text: text }, target));
   await chrome.action.setBadgeBackgroundColor(Object.assign({ color: on ? "#137333" : "#5f6368" }, target));
   const title = mode === "paused" ? "Yarrow is paused on this site" : on ? "Yarrow is on" : "Yarrow is off";
   await chrome.action.setTitle(Object.assign({ title: title }, target));
@@ -310,6 +357,7 @@ async function showThreat(tabId, threat, notify) {
 }
 
 async function paintTab(tabId, url, notify) {
+  await countsReady;
   const threat = assess(url);
   const mode = globalThis.BlockeeSites.toolbarMode({
     enabled: settings.enabled,
@@ -320,7 +368,7 @@ async function paintTab(tabId, url, notify) {
     await showThreat(tabId, threat, notify);
     return;
   }
-  await applyToolbar(tabId, mode);
+  await applyToolbar(tabId, mode, blockedCounts.get(tabId) || 0);
 }
 
 async function scanOpenTabs(notifyActive) {
@@ -366,6 +414,8 @@ async function injectOpenTabs() {
             "content/picker.js",
             "content/youtube.js",
             "content/players.js",
+            "shared/sponsor.js",
+            "content/sponsor.js",
           ],
         });
       } catch (err) {
@@ -425,21 +475,24 @@ chrome.webNavigation.onCommitted.addListener((details) => {
   navTimes.set(details.tabId, details.timeStamp || Date.now());
   countsReady.then(() => {
     blockedCounts.set(details.tabId, 0);
-    chrome.storage.session.remove(countKey(details.tabId)).catch(() => {});
+    blockedLogs.set(details.tabId, []);
+    chrome.storage.session.remove([countKey(details.tabId), logKey(details.tabId)]).catch(() => {});
+    paintTab(details.tabId, details.url || "", false).catch(() => {});
   });
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   blockedCounts.delete(tabId);
+  blockedLogs.delete(tabId);
   navTimes.delete(tabId);
-  chrome.storage.session.remove(countKey(tabId)).catch(() => {});
+  chrome.storage.session.remove([countKey(tabId), logKey(tabId)]).catch(() => {});
 });
 
 if (chrome.declarativeNetRequest.onRuleMatchedDebug) {
   chrome.declarativeNetRequest.onRuleMatchedDebug.addListener((info) => {
     const request = info.request || {};
     if (!isBlockedMatch(info.rule)) return;
-    noteBlock(request.tabId, request.requestId);
+    noteBlock(request.tabId, request.requestId, request.url);
   });
 }
 
@@ -447,7 +500,7 @@ if (chrome.webRequest && chrome.webRequest.onErrorOccurred) {
   chrome.webRequest.onErrorOccurred.addListener(
     (details) => {
       if (details.error !== "net::ERR_BLOCKED_BY_CLIENT") return;
-      noteBlock(details.tabId, details.requestId);
+      noteBlock(details.tabId, details.requestId, details.url);
     },
     { urls: ["<all_urls>"] }
   );
@@ -460,7 +513,7 @@ chrome.webNavigation.onCreatedNavigationTarget.addListener((details) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || !message.type) return;
   if (message.type === "blockee-blocked") {
-    noteBlock(sender.tab && sender.tab.id);
+    noteBlock(sender.tab && sender.tab.id, null, message.url);
     return;
   }
   if (message.type === "blockee-get") {
@@ -476,12 +529,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           annoyancesEnabled: settings.annoyancesEnabled,
           videoAdsEnabled: settings.videoAdsEnabled,
           bannersEnabled: settings.bannersEnabled,
+          sponsorsEnabled: settings.sponsorsEnabled,
           pausedSites: settings.pausedSites,
           allowList: settings.allowList,
           blockList: settings.blockList,
           hiddenHere: hiddenFor(url),
           pausedHere: globalThis.BlockeeSites.isSitePaused(url, settings.pausedSites),
           blockedCount: blockedCount,
+          blockedLog: logsFor(message.tabId),
           threat: threat.malicious ? threat : null,
         });
       })
@@ -493,12 +548,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           annoyancesEnabled: true,
           videoAdsEnabled: true,
           bannersEnabled: true,
+          sponsorsEnabled: true,
           pausedSites: [],
           allowList: [],
           blockList: [],
           hiddenHere: [],
           pausedHere: false,
           blockedCount: 0,
+          blockedLog: [],
           threat: null,
         })
       );
@@ -568,7 +625,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       key !== "securityEnabled" &&
       key !== "annoyancesEnabled" &&
       key !== "videoAdsEnabled" &&
-      key !== "bannersEnabled"
+      key !== "bannersEnabled" &&
+      key !== "sponsorsEnabled"
     ) {
       sendResponse({ ok: false });
       return;
@@ -576,6 +634,37 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const value = message.value !== undefined ? message.value : message.enabled;
     setSetting(key, value)
       .then(() => sendResponse({ ok: true, ...settings }))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+  if (message.type === "blockee-export") {
+    whenReady()
+      .then(() => sendResponse({ ok: true, backup: globalThis.BlockeeSites.backupSettings(settings) }))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+  if (message.type === "blockee-import") {
+    whenReady()
+      .then(async () => {
+        const result = globalThis.BlockeeSites.importSettings(message.backup);
+        if (!result.ok) return result;
+        const backup = result.settings;
+        settings.enabled = backup.enabled;
+        settings.trackingEnabled = backup.trackingEnabled;
+        settings.securityEnabled = backup.securityEnabled;
+        settings.annoyancesEnabled = backup.annoyancesEnabled;
+        settings.videoAdsEnabled = backup.videoAdsEnabled;
+        settings.bannersEnabled = backup.bannersEnabled;
+        settings.sponsorsEnabled = backup.sponsorsEnabled;
+        settings.pausedSites = backup.pausedSites;
+        settings.allowList = backup.allowList;
+        settings.blockList = backup.blockList;
+        settings.hiddenElements = backup.hiddenElements;
+        await syncSettings();
+        await broadcastAds();
+        return { ok: true };
+      })
+      .then((result) => sendResponse(result))
       .catch(() => sendResponse({ ok: false }));
     return true;
   }
@@ -645,3 +734,24 @@ whenReady()
   .then(() => refreshFeeds())
   .then(() => refreshFilterLists())
   .catch((err) => console.error("Yarrow failed to start", err));
+
+function installMenus() {
+  if (!chrome.contextMenus) return;
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: "blockee-hide",
+      title: "Hide this element",
+      contexts: ["page", "frame", "selection", "link", "image", "video", "audio"],
+      documentUrlPatterns: ["http://*/*", "https://*/*"],
+    });
+  });
+}
+
+installMenus();
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (!tab || tab.id == null || info.menuItemId !== "blockee-hide") return;
+  chrome.tabs.sendMessage(tab.id, { type: "blockee-hide-target" }, { frameId: info.frameId }, () => {
+    void chrome.runtime.lastError;
+  });
+});

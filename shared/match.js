@@ -59,6 +59,19 @@
     return a.pathname === b.pathname && a.search === b.search;
   }
 
+  function bareHost(url) {
+    return url.hostname.toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
+  }
+
+  function sameSite(left, right, base) {
+    const a = asUrl(left, base);
+    const b = asUrl(right, base);
+    if (!a || !b) return false;
+    const leftHost = bareHost(a);
+    const rightHost = bareHost(b);
+    return leftHost === rightHost || leftHost.endsWith("." + rightHost) || rightHost.endsWith("." + leftHost);
+  }
+
   function isRealNavigation(href, pageUrl) {
     const target = asUrl(href, pageUrl);
     const page = asUrl(pageUrl);
@@ -91,16 +104,21 @@
 
     const kind = clickKindOf(options, pageUrl);
     const page = asUrl(pageUrl);
+    if (
+      kind === "navigate" &&
+      options.clickedHref &&
+      (sameDestination(openUrl.href, options.clickedHref, pageUrl) || sameSite(openUrl.href, options.clickedHref, pageUrl))
+    ) {
+      return false;
+    }
     if (options.viaFrame && page && openUrl.origin !== page.origin) return true;
     if (options.viaFrame && (openUrl.protocol === "about:" || openUrl.protocol === "javascript:" || openUrl.protocol === "data:")) {
       return true;
     }
     if (kind === "none" || kind === "control") return false;
-    if (kind === "navigate" && options.clickedHref && sameDestination(openUrl.href, options.clickedHref, pageUrl)) {
-      return false;
-    }
 
     const protocol = openUrl.protocol;
+    if (protocol === "about:" && kind === "navigate" && !options.clickedHidden) return false;
     if (protocol === "javascript:" || protocol === "data:" || protocol === "about:") return true;
     if (!page) return false;
     return openUrl.origin !== page.origin;
@@ -145,6 +163,7 @@
     isPopScriptUrl,
     isRealNavigation,
     sameDestination,
+    sameSite,
     shouldBlockFormSubmit,
     shouldBlockNewTabAnchor,
     shouldBlockPopup,
