@@ -29,16 +29,35 @@
     return element.closest("a[href]");
   }
 
+  function controlFrom(event) {
+    const element = elementFrom(event);
+    if (!element || !element.closest) return null;
+    return element.closest(
+      "button, input, select, textarea, summary, [role='button'], [role='link'], [role='menuitem'], [role='tab']"
+    );
+  }
+
+  function dialogFrom(element) {
+    if (!element || !element.closest) return null;
+    return element.closest("dialog, [role='dialog'], [role='alertdialog'], [aria-modal='true']");
+  }
+
+  function clickIsHidden(element) {
+    const dialog = dialogFrom(element);
+    if (dialog && !isHidden(dialog)) return false;
+    return isHidden(element);
+  }
+
   function classify(event) {
     const anchor = anchorFrom(event);
-    if (anchor && globalThis.BlockeeMatch.isRealNavigation(anchor.href, location.href)) {
-      return { kind: "navigate", href: anchor.href, hidden: isHidden(anchor) };
-    }
+    const control = controlFrom(event);
     const element = elementFrom(event);
-    if (element && element.closest && element.closest("button, input, select, textarea, [role='button']")) {
-      return { kind: "control", href: null };
+    const hidden = clickIsHidden(control || anchor || element);
+    if (control) return { kind: "control", href: anchor ? anchor.href : null, hidden: hidden };
+    if (anchor && globalThis.BlockeeMatch.isRealNavigation(anchor.href, location.href)) {
+      return { kind: "navigate", href: anchor.href, hidden: hidden };
     }
-    return { kind: "other", href: null };
+    return { kind: "other", href: anchor ? anchor.href : null, hidden: hidden };
   }
 
   function currentClick() {
@@ -133,6 +152,10 @@
     readEnabled();
     clickState = Object.assign({ at: Date.now() }, classify(event));
     if (!enabled) return;
+    // pointerdown and mousedown only remember the click. Cancelling them
+    // drops the browser's user gesture, so a later window.open returns null.
+    if (event.type === "pointerdown" || event.type === "mousedown") return;
+    if (controlFrom(event)) return;
     const anchor = anchorFrom(event);
     if (!anchor || !anchor.href) return;
     const block = globalThis.BlockeeMatch.shouldBlockNewTabAnchor({
@@ -140,7 +163,7 @@
       href: anchor.href,
       target: anchor.target,
       pageUrl: location.href,
-      hidden: isHidden(anchor),
+      hidden: clickIsHidden(anchor),
       modifiedClick: !!(event.metaKey || event.ctrlKey || event.button === 1),
     });
     if (!block) return;
@@ -178,6 +201,7 @@
       action: form.getAttribute("action") || form.action,
       target: form.target,
       pageUrl: location.href,
+      hidden: clickIsHidden(form),
     });
   }
 
@@ -196,7 +220,7 @@
         const form = event.target;
         if (!form || form.tagName !== "FORM") return;
         const adAction = globalThis.BlockeeMatch.isAdUrl(form.action, location.href);
-        if (!adAction && !isHidden(form)) return;
+        if (!adAction && !clickIsHidden(form)) return;
         if (!adAction && !blockedForm(form)) return;
         event.preventDefault();
         event.stopPropagation();

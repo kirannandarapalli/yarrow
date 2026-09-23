@@ -83,15 +83,9 @@
     return true;
   }
 
-  function clickKindOf(options, pageUrl) {
-    if (options.clickKind) return options.clickKind;
-    if (options.clickedHref && isRealNavigation(options.clickedHref, pageUrl)) return "navigate";
-    return "none";
-  }
-
-  // Block a window.open call when it is an ad, when a real link click also
-  // opens some other cross-origin page, or when a click that is not a button
-  // opens a cross-origin page (the "any click opens an ad" pattern).
+  // A visible click may open the page the user asked for, including a button
+  // or a link inside a modal. Block ad addresses, opens from an ad frame, and
+  // opens started by a hidden element (the pop-under pattern).
   function shouldBlockPopup(options) {
     if (!options || !options.enabled) return false;
     const pageUrl = options.pageUrl || undefined;
@@ -102,24 +96,15 @@
     if (!openUrl) return true;
     if (isAdUrl(openUrl.href)) return true;
 
-    const kind = clickKindOf(options, pageUrl);
     const page = asUrl(pageUrl);
-    if (
-      kind === "navigate" &&
-      options.clickedHref &&
-      (sameDestination(openUrl.href, options.clickedHref, pageUrl) || sameSite(openUrl.href, options.clickedHref, pageUrl))
-    ) {
+    const scriptProtocol = openUrl.protocol === "about:" || openUrl.protocol === "javascript:" || openUrl.protocol === "data:";
+    if (options.viaFrame) {
+      if (!page || openUrl.origin !== page.origin || scriptProtocol) return true;
       return false;
     }
-    if (options.viaFrame && page && openUrl.origin !== page.origin) return true;
-    if (options.viaFrame && (openUrl.protocol === "about:" || openUrl.protocol === "javascript:" || openUrl.protocol === "data:")) {
-      return true;
-    }
-    if (kind === "none" || kind === "control") return false;
+    if (!options.clickedHidden) return false;
 
-    const protocol = openUrl.protocol;
-    if (protocol === "about:" && kind === "navigate" && !options.clickedHidden) return false;
-    if (protocol === "javascript:" || protocol === "data:" || protocol === "about:") return true;
+    if (scriptProtocol) return true;
     if (!page) return false;
     return openUrl.origin !== page.origin;
   }
@@ -142,6 +127,7 @@
     if (!options || !options.enabled) return false;
     const action = asUrl(options.action || "about:blank", options.pageUrl);
     if (action && isAdUrl(action.href)) return true;
+    if (options.hidden === false) return false;
     if (!opensNewContext(options.target)) return false;
     if (!action) return true;
     const page = asUrl(options.pageUrl);

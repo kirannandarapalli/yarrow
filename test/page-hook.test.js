@@ -80,14 +80,41 @@ test("a normal link click does not also open an ad tab", () => {
   const context = boot();
   const link = element({
     href: "https://news.example/next",
+    getBoundingClientRect() {
+      return { width: 80, height: 20 };
+    },
     closest(selector) {
       return selector === "a[href]" ? link : null;
     },
   });
   fire(context, "click", link);
-  const popup = context.open("https://unknown-sponsor.test/landing");
-  assert.equal(popup, null);
-  assert.deepEqual(context.opened, []);
+  assert.equal(context.open("https://doubleclick.net/aclk"), null);
+  const booking = context.open("https://partner.example/booking");
+  assert.equal(booking.url, "https://partner.example/booking");
+});
+
+test("a button inside a modal can open the page it points to", () => {
+  const context = boot();
+  context.getComputedStyle = () => ({ display: "block", visibility: "visible", opacity: "1" });
+  const dialog = element({
+    getBoundingClientRect() {
+      return { width: 480, height: 320 };
+    },
+  });
+  const button = element({
+    getBoundingClientRect() {
+      return { width: 120, height: 40 };
+    },
+    closest(selector) {
+      if (selector.includes("button") || selector.includes("role='button'")) return button;
+      if (selector.includes("dialog")) return dialog;
+      return null;
+    },
+  });
+  const event = fire(context, "click", button);
+  assert.equal(event.defaultPrevented, false);
+  const popup = context.open("https://partner.example/checkout");
+  assert.equal(popup.url, "https://partner.example/checkout");
 });
 
 test("a button can still open a real popup", () => {
@@ -132,6 +159,25 @@ test("a visible new-tab link is left alone", () => {
   assert.equal(popup.url, "https://partner.example/story?ref=home");
   const blank = context.open("about:blank");
   assert.equal(blank.url, "about:blank");
+});
+
+test("pressing down on a link does not cancel the click that opens a tab", () => {
+  const context = boot();
+  context.getComputedStyle = () => ({ display: "block", visibility: "visible", opacity: "1" });
+  const link = element({
+    href: "https://mietwagenvergleich.check24.de/jump-in/offer/1",
+    children: [],
+    getBoundingClientRect() {
+      return { width: 195, height: 50 };
+    },
+    closest(selector) {
+      return selector === "a[href]" ? link : null;
+    },
+  });
+  const down = fire(context, "pointerdown", link);
+  assert.equal(down.defaultPrevented, false);
+  const popup = context.open("about:blank");
+  assert.equal(popup.url, "about:blank");
 });
 
 test("a hidden new-tab anchor is still blocked", () => {

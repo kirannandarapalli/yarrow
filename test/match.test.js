@@ -105,7 +105,29 @@ test("popup policy blocks ads and click hijacks, and allows real popups", () => 
       enabled: true,
       openUrl: "about:blank",
       pageUrl: page,
+      clickKind: "other",
+      clickedHidden: true,
+    }),
+    true
+  );
+
+  assert.equal(
+    shouldBlockPopup({
+      enabled: true,
+      openUrl: "https://partner.example/booking",
+      pageUrl: page,
       clickedHref: "https://news.example/story/next",
+      clickKind: "navigate",
+    }),
+    false
+  );
+
+  assert.equal(
+    shouldBlockPopup({
+      enabled: true,
+      openUrl: "https://partner.example/booking",
+      pageUrl: page,
+      clickKind: "control",
     }),
     false
   );
@@ -116,6 +138,7 @@ test("popup policy blocks ads and click hijacks, and allows real popups", () => 
       openUrl: "https://unknown-sponsor.test/landing",
       pageUrl: page,
       clickedHref: "https://news.example/story/next",
+      clickedHidden: true,
     }),
     true
   );
@@ -186,6 +209,7 @@ test("popup policy blocks ads and click hijacks, and allows real popups", () => 
       openUrl: "https://unknown-sponsor.test/landing",
       pageUrl: page,
       clickKind: "other",
+      clickedHidden: true,
     }),
     true
   );
@@ -225,6 +249,16 @@ test("streamxtv-style popunders are blocked", () => {
       action: "https://streamxtv.tech/search",
       target: "_blank",
       pageUrl: site,
+    }),
+    false
+  );
+  assert.equal(
+    shouldBlockFormSubmit({
+      enabled: true,
+      action: "https://partner.example/book",
+      target: "_blank",
+      pageUrl: site,
+      hidden: false,
     }),
     false
   );
